@@ -1,0 +1,105 @@
+name: GeniusKala Host Speed Monitor
+
+on:
+  workflow_dispatch:
+    inputs:
+      total_hours:
+        description: "Total test duration in hours (max 24)"
+        required: true
+        default: "24"
+        type: string
+
+      file_hours:
+        description: "Hours per CSV file (max 4)"
+        required: true
+        default: "4"
+        type: string
+
+      interval_minutes:
+        description: "Minutes between speed tests"
+        required: true
+        default: "10"
+        type: string
+
+      url_order:
+        description: "URL test order"
+        required: true
+        default: "sequential"
+        type: choice
+        options:
+          - sequential
+          - random
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gk-host-speed-monitor
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      segments: ${{ steps.plan.outputs.segments }}
+    steps:
+      - id: plan
+        shell: bash
+        env:
+          TOTAL: ${{ inputs.total_hours }}
+          FILE: ${{ inputs.file_hours }}
+          INTERVAL: ${{ inputs.interval_minutes }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import math, os
+          total=float(os.environ["TOTAL"])
+          fileh=float(os.environ["FILE"])
+          interval=float(os.environ["INTERVAL"])
+          if not (0 < total <= 24):
+              raise SystemExit("total_hours must be > 0 and <= 24")
+          if not (0 < fileh <= 4):
+              raise SystemExit("file_hours must be > 0 and <= 4")
+          if interval <= 0:
+              raise SystemExit("interval_minutes must be > 0")
+          segments=math.ceil(total/fileh)
+          if segments > 24:
+              raise SystemExit("Too many CSV segments.")
+          print(f"segments={segments}")
+          PY
+
+  # GitHub-hosted jobs cannot run for 24h, so segments are chained.
+  segment1:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.segments) >= 1 }}
+    uses: ./.github/workflows/segment.yml
+    with: {total_hours: "${{ inputs.total_hours }}", file_hours: "${{ inputs.file_hours }}", interval_minutes: "${{ inputs.interval_minutes }}", url_order: "${{ inputs.url_order }}", segment: 1}
+
+  segment2:
+    needs: [plan, segment1]
+    if: ${{ always() && fromJSON(needs.plan.outputs.segments) >= 2 && needs.segment1.result == 'success' }}
+    uses: ./.github/workflows/segment.yml
+    with: {total_hours: "${{ inputs.total_hours }}", file_hours: "${{ inputs.file_hours }}", interval_minutes: "${{ inputs.interval_minutes }}", url_order: "${{ inputs.url_order }}", segment: 2}
+
+  segment3:
+    needs: [plan, segment2]
+    if: ${{ always() && fromJSON(needs.plan.outputs.segments) >= 3 && needs.segment2.result == 'success' }}
+    uses: ./.github/workflows/segment.yml
+    with: {total_hours: "${{ inputs.total_hours }}", file_hours: "${{ inputs.file_hours }}", interval_minutes: "${{ inputs.interval_minutes }}", url_order: "${{ inputs.url_order }}", segment: 3}
+
+  segment4:
+    needs: [plan, segment3]
+    if: ${{ always() && fromJSON(needs.plan.outputs.segments) >= 4 && needs.segment3.result == 'success' }}
+    uses: ./.github/workflows/segment.yml
+    with: {total_hours: "${{ inputs.total_hours }}", file_hours: "${{ inputs.file_hours }}", interval_minutes: "${{ inputs.interval_minutes }}", url_order: "${{ inputs.url_order }}", segment: 4}
+
+  segment5:
+    needs: [plan, segment4]
+    if: ${{ always() && fromJSON(needs.plan.outputs.segments) >= 5 && needs.segment4.result == 'success' }}
+    uses: ./.github/workflows/segment.yml
+    with: {total_hours: "${{ inputs.total_hours }}", file_hours: "${{ inputs.file_hours }}", interval_minutes: "${{ inputs.interval_minutes }}", url_order: "${{ inputs.url_order }}", segment: 5}
+
+  segment6:
+    needs: [plan, segment5]
+    if: ${{ always() && fromJSON(needs.plan.outputs.segments) >= 6 && needs.segment5.result == 'success' }}
+    uses: ./.github/workflows/segment.yml
+    with: {total_hours: "${{ inputs.total_hours }}", file_hours: "${{ inputs.file_hours }}", interval_minutes: "${{ inputs.interval_minutes }}", url_order: "${{ inputs.url_order }}", segment: 6}
