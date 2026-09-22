@@ -1,0 +1,3 @@
+# هر خط یک URL. پارامتر gk_timing=1 را برنامه خودکار اضافه می‌کند.
+https://geniuskala.com/
+https://geniuskala.com/shop/
