@@ -1,0 +1,63 @@
+name: Host Speed Segment
+
+on:
+  workflow_call:
+    inputs:
+      total_hours: {required: true, type: string}
+      file_hours: {required: true, type: string}
+      interval_minutes: {required: true, type: string}
+      url_order: {required: true, type: string}
+      segment: {required: true, type: number}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 270
+    env:
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Calculate segment
+        id: calc
+        shell: bash
+        env:
+          TOTAL: ${{ inputs.total_hours }}
+          FILE: ${{ inputs.file_hours }}
+          SEG: ${{ inputs.segment }}
+          INTERVAL: ${{ inputs.interval_minutes }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
+          total=float(os.environ["TOTAL"])
+          fileh=float(os.environ["FILE"])
+          seg=int(os.environ["SEG"])
+          interval=float(os.environ["INTERVAL"])
+          start=(seg-1)*fileh
+          remain=max(0,total-start)
+          duration=min(fileh,remain)
+          print(f"minutes={max(1,int(round(duration*60)))}")
+          # Keeps sequential rotation continuous across CSV segments.
+          previous_minutes=start*60
+          previous_samples=int(previous_minutes // interval) if interval else 0
+          print(f"start_index={previous_samples}")
+          PY
+
+      - name: Run monitor
+        run: |
+          python -u host_speed_monitor.py \
+            --urls-file urls.txt \
+            --order "${{ inputs.url_order }}" \
+            --duration-minutes "${{ steps.calc.outputs.minutes }}" \
+            --interval-minutes "${{ inputs.interval_minutes }}" \
+            --segment "${{ inputs.segment }}" \
+            --start-index "${{ steps.calc.outputs.start_index }}"
+
+      - name: Upload CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-speed-segment-${{ inputs.segment }}
+          path: results/*.csv
+          retention-days: 30
